@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Art: Reclining</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a1a; }
+        canvas { display: block; }
+        #loading {
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            color: white; font-family: monospace;
+            pointer-events: none;
+        }
+    </style>
+    <!-- Import Three.js as a module -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <style>
+      /* Hides common overlay IDs and classes used in Three.js examples and generated code */
+      #info, #loading, #ui, #instructions, .label, .overlay, #description {
+        display: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        visibility: hidden !important;
+      }
+      /* Ensure the body doesn't show selected text cursor interaction outside canvas */
+      body {
+        user-select: none !important;
+      }
+    </style>
+  </head>
+<body>
+    <div id="loading">Rendering Voxels...</div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Configuration ---
+        const PALETTE = {
+            skinBase: 0xeebfa1,    // Peach
+            skinShadow: 0xd69e80,  // Darker peach
+            skinHighlight: 0xffdbbf, // Light peach
+            cigWhite: 0xfafafa,
+            cigFilter: 0xcd853f,
+            bg: 0x222222
+        };
+
+        const VOXEL_SIZE = 1;
+        const GAP = 0.05; // Slight gap between voxels for that "blocky" look
+
+        // --- Scene Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(PALETTE.bg);
+        scene.fog = new THREE.FogExp2(PALETTE.bg, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(16, 12, 16);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 1.0;
+
+        // --- Lighting ---
+        // Simulating the soft, directional light from the photo
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const mainLight = new THREE.DirectionalLight(0xffeebb, 1.5);
+        mainLight.position.set(10, 20, 10);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 2048;
+        mainLight.shadow.mapSize.height = 2048;
+        scene.add(mainLight);
+
+        const rimLight = new THREE.PointLight(0x8888ff, 0.8); // Cool rim light from behind
+        rimLight.position.set(-10, 5, -10);
+        scene.add(rimLight);
+
+        // --- Voxel Logic ---
+        const geometry = new THREE.BoxGeometry(VOXEL_SIZE - GAP, VOXEL_SIZE - GAP, VOXEL_SIZE - GAP);
+        const voxelGroup = new THREE.Group();
+
+        // Helper to place a voxel
+        function placeVoxel(x, y, z, colorHex) {
+            const material = new THREE.MeshStandardMaterial({ 
+                color: colorHex, 
+                roughness: 0.8,
+                metalness: 0.0
+            });
+            const voxel = new THREE.Mesh(geometry, material);
+            voxel.position.set(x * VOXEL_SIZE, y * VOXEL_SIZE, z * VOXEL_SIZE);
+            voxel.castShadow = true;
+            voxel.receiveShadow = true;
+            voxelGroup.add(voxel);
+        }
+
+        // --- Sculpting the Scene ---
+        
+        // 1. Constructing the Leg and Ankle
+        // We build it vertically first, then rotate the whole group later to match the reclining pose
+        for(let y = 0; y < 12; y++) {
+            for(let x = -2; x <= 2; x++) {
+                for(let z = -2; z <= 2; z++) {
+                    // Create a rounded cylinder approximation
+                    if(Math.abs(x) + Math.abs(z) < 4) {
+                        placeVoxel(x, y, z, PALETTE.skinShadow);
+                    }
+                }
+            }
+        }
+
+        // 2. The Heel (sticking out back)
+        for(let y = 0; y < 4; y++) {
+            for(let x = -2; x <= 2; x++) {
+                for(let z = -4; z < -1; z++) {
+                     if(Math.abs(x) < 2) placeVoxel(x, y, z, PALETTE.skinBase);
+                }
+            }
+        }
+
+        // 3. The Foot Arch and Sole (extending forward)
+        // Building out towards +Z
+        for(let z = 2; z < 8; z++) {
+            for(let x = -2; x <= 2; x++) {
+                // Taper width slightly
+                let width = (z > 4) ? 2.5 : 2;
+                if(Math.abs(x) <= width) {
+                    // Arch shape
+                    let height = 2; 
+                    if (z > 3 && z < 6) height = 3; // The arch rises
+                    
+                    for(let y = 0; y < height; y++) {
+                        // Color variation: Top is highlight, bottom is shadow
+                        let col = (y === height - 1) ? PALETTE.skinHighlight : PALETTE.skinBase;
+                        placeVoxel(x, y, z, col);
+                    }
+                }
+            }
+        }
+
+        // 4. The Toes
+        const toeZ = 8;
+        
+        // Big Toe (Left side from foot perspective)
+        // x range: -2 to -0.5
+        for(let x = -2; x <= -1; x++) {
+            for(let y = 0; y < 2; y++) {
+                placeVoxel(x, y, toeZ, PALETTE.skinHighlight);
+                placeVoxel(x, y, toeZ + 1, PALETTE.skinHighlight); // Tip
+            }
+        }
+
+        // Other Toes (Right side)
+        // x range: 0 to 2
+        for(let x = 0; x <= 2; x++) {
+            let len = (x === 0) ? 1 : 0; // Second toe is longer
+            for(let zOffset = 0; zOffset <= len; zOffset++) {
+                 placeVoxel(x, 0, toeZ + zOffset, PALETTE.skinBase);
+            }
+        }
+
+        // 5. The Cigarette (The Prop)
+        // Positioned between Big Toe (x=-1) and Second Toe (x=0)
+        // Angled upwards and outwards
+        const cigGroup = new THREE.Group();
+        const cigLength = 8;
+        
+        for(let i = 0; i < cigLength; i++) {
+            let col = (i < 2) ? PALETTE.cigFilter : PALETTE.cigWhite;
+            // A thin object, maybe just small cubes
+            // We use the helper but translate locally inside a rotated group
+            const mat = new THREE.MeshStandardMaterial({ color: col, emissive: (i===cigLength-1)?0xff0000:0x000000, emissiveIntensity: (i===cigLength-1)?0.5:0 });
+            const part = new THREE.Mesh(geometry, mat);
+            // Make cig thinner
+            part.scale.set(0.4, 0.4, 1); 
+            part.position.set(0, 0, i * 0.5); // overlapping slightly to look continuous
+            cigGroup.add(part);
+        }
+
+        // Position Cigarette in the gap
+        cigGroup.position.set(-0.5, 1.5, toeZ - 1);
+        // Rotate to match the "held" angle
+        cigGroup.rotation.x = -Math.PI / 4; // Pointing up
+        cigGroup.rotation.y = -Math.PI / 8; // Slight angle
+        
+        voxelGroup.add(cigGroup);
+
+        // --- Final Transforms ---
+        // Rotate the entire foot to be "reclining"
+        voxelGroup.rotation.x = -Math.PI / 2.5; 
+        voxelGroup.rotation.z = Math.PI / 8;
+        voxelGroup.position.y = -2; // Center in view
+
+        scene.add(voxelGroup);
+
+        // --- Environment / Atmosphere ---
+        // Add some floating particles to mimic grain/dust
+        const particlesGeom = new THREE.BufferGeometry();
+        const particlesCount = 300;
+        const posArray = new Float32Array(particlesCount * 3);
+        
+        for(let i = 0; i < particlesCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 40;
+        }
+        
+        particlesGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particlesMat = new THREE.PointsMaterial({
+            size: 0.1,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.4
+        });
+        const particlesMesh = new THREE.Points(particlesGeom, particlesMat);
+        scene.add(particlesMesh);
+
+        // --- Render Loop ---
+        document.getElementById('loading').style.display = 'none';
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            
+            // Subtle floating animation for the foot
+            const time = Date.now() * 0.001;
+            voxelGroup.position.y = -2 + Math.sin(time) * 0.2;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
